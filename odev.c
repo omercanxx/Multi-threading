@@ -1,53 +1,53 @@
+#define _GNU_SOURCE
+#define SIZE 100000
+#define LOWER -10000
+#define UPPER 10000
+
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
 #include <string.h>
+#include <sched.h>
+#include <stdint.h>
 
+int *firstPart, *secondPart, *thirdPart, *fourthPart,* fifthPart;
 
-#define SIZE 50
-#define LOWER -10000
-#define UPPER 10000
-
-int *firstHPart, *secondPart, *thirdPart, *fourthPart,* fifthPart;
-
-int count = 0;
+/* Zaman olcum fonksiyonu */
+void time_it(struct timeval *t2, struct timeval *t1) {
+  long int diff = 
+    (t2->tv_usec + 1000000 * t2->tv_sec) - 
+    (t1->tv_usec + 1000000 * t1->tv_sec);
+    fprintf(stdout, "***TIME***\n%.6f milliseconds\n", diff / 1000.);
+}
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-/* HEAP SORT */
-// A heap has current size and array of elements
 
+
+/* HEAP SORT */
 struct MaxHeap
 {
     int size;
     int* array;
 };
 
-// A utility function to swap to integers
+
 void swap(int* a, int* b) { int t = *a; *a = *b;  *b = t; }
 
-// The main function to heapify a Max Heap. The function
-// assumes that everything under given root (element at
-// index idx) is already heapified
 void maxHeapify(struct MaxHeap* maxHeap, int idx)
 {
-    int largest = idx;  // Initialize largest as root
-    int left = (idx << 1) + 1;  // left = 2*idx + 1
-    int right = (idx + 1) << 1; // right = 2*idx + 2
+    int largest = idx;
+    int left = (idx << 1) + 1;  
+    int right = (idx + 1) << 1; 
 
-    // See if left child of root exists and is greater than
-    // root
     if (left < maxHeap->size &&
         maxHeap->array[left] > maxHeap->array[largest])
         largest = left;
 
-    // See if right child of root exists and is greater than
-    // the largest so far
     if (right < maxHeap->size &&
         maxHeap->array[right] > maxHeap->array[largest])
         largest = right;
 
-    // Change root, if needed
     if (largest != idx)
     {
         swap(&maxHeap->array[largest], &maxHeap->array[idx]);
@@ -55,39 +55,28 @@ void maxHeapify(struct MaxHeap* maxHeap, int idx)
     }
 }
 
-// A utility function to create a max heap of given capacity
 struct MaxHeap* createAndBuildHeap(int *array, int size)
 {
     int i;
     struct MaxHeap* maxHeap =
               (struct MaxHeap*) malloc(sizeof(struct MaxHeap));
-    maxHeap->size = size;   // initialize size of heap
-    maxHeap->array = array; // Assign address of first element of array
+    maxHeap->size = size;   
+    maxHeap->array = array; 
 
-    // Start from bottommost and rightmost internal mode and heapify all
-    // internal modes in bottom up way
     for (i = (maxHeap->size - 2) / 2; i >= 0; --i)
         maxHeapify(maxHeap, i);
     return maxHeap;
 }
 
-// The main function to sort an array of given size
 void heapSort(int* array, int size)
 {
-    // Build a heap from the input data.
     struct MaxHeap* maxHeap = createAndBuildHeap(array, size);
 
-    // Repeat following steps while heap size is greater than 1.
-    // The last element in max heap will be the minimum element
     while (maxHeap->size > 1)
     {
-        // The largest item in Heap is stored at the root. Replace
-        // it with the last item of the heap followed by reducing the
-        // size of heap by 1.
         swap(&maxHeap->array[0], &maxHeap->array[maxHeap->size - 1]);
-        --maxHeap->size;  // Reduce heap size
+        --maxHeap->size;
 
-        // Finally, heapify the root of tree.
         maxHeapify(maxHeap, 0);
     }
 }
@@ -105,25 +94,26 @@ void divideArray(int* array, int size){
     memcpy(fourthPart, array + 3 * (SIZE / 5), sizeof(int) * (SIZE / 5));
     memcpy(fifthPart, array + 4 * (SIZE / 5), sizeof(int) * (SIZE / 5));
 }
+
+
+
 /* GLOBAL DEGISKENLER */
-
 // Thread sayisini global olarak tutacagiz
+
+int count = 0;
 int thread_count;
-
 int *results;
-
 int size;
-int *p, t;
+int *p;
+int *sorted;
 int * getRandomArray( ) {
 
    static int  r[SIZE];
    int i;
-   /* set the seed */
    srand( (unsigned)time( NULL ) );
   
    for ( i = 0; i < SIZE; i++) {
       r[i] = (rand() % (UPPER - LOWER + 1)) + LOWER;
-      //printf( "r[%d] = %d\n", i, r[i]);
    }
    return r;
 }
@@ -133,7 +123,6 @@ void *runner() {
     pthread_mutex_lock(&mutex);
     if(count == 0){
     	divideArray(p, SIZE);
-	heapSort(p, SIZE);
     }
     if(count == 1){
 	heapSort(firstPart, (SIZE / 5));
@@ -145,6 +134,9 @@ void *runner() {
 	heapSort(thirdPart, (SIZE / 5));
     }
     if(count == 4){
+	heapSort(fourthPart, (SIZE / 5));
+    }
+    if(count == 5){
 	heapSort(fifthPart, (SIZE / 5));
     }
     count++;
@@ -153,26 +145,39 @@ void *runner() {
 
 int main(int argc, const char *argv[])
 {
-    int i;
+    int argv_1 = atoi(argv[1]);
+    int argv_2 = atoi(argv[2]);
+
+    pthread_attr_t attr;
+
+    int ret;
+
+    // Mainin süre ölçümü için gerekli
+    struct timeval start, stop;
+
+    // Ölçüm başlıyor
+    gettimeofday(&start, NULL);
+
+    int i, j, t;
 
     p = getRandomArray();
-		
-    int err;
+
+    int err;    
     pthread_t thread_id;
+
     if (argc != 3) {
         fprintf(stderr, "usage: %s <total points> <threads>\n", argv[0]);
         exit(1);
     }
+    srand(time(NULL));
     
-    int argv_1 = atoi(argv[1]);
 
-    pthread_t *threads; //yaratilacak threadlerin tutulacagi dinamik dizi
+    pthread_t *threads; 
 
     // Global degiskenler
     thread_count = 5;
 
     // Her elemani bir pthread_t gostericisi olan, thread_count elemanli bir bellek alani
-
     threads = (pthread_t *)malloc(sizeof(pthread_t)*thread_count);
     if(threads == NULL) {
 	exit(1);
@@ -180,15 +185,51 @@ int main(int argc, const char *argv[])
 
     // Her threadin sonucu kaydedecegi global results gostericisine malloc ile yer ayirdik
     results = (int*)malloc(sizeof(int));
-
-
-
+    
+    ret = pthread_attr_init(&attr);
+    
+    if(argv_1 == 1)
+    {
+	ret = pthread_attr_setscope( &attr, PTHREAD_SCOPE_SYSTEM);
+	if(argv_2 == 1)
+	{
+	    ret = pthread_attr_setschedpolicy( &attr, SCHED_OTHER);
+	}
+	else if(argv_2 == 2)
+	{
+	    ret = pthread_attr_setschedpolicy( &attr, SCHED_BATCH);
+	}
+	else if(argv_2 == 3)
+	{
+	    ret = pthread_attr_setschedpolicy( &attr, SCHED_IDLE);
+	}
+    }
+    else if(argv_1 == 2)
+    {
+	ret = pthread_attr_setscope( &attr, PTHREAD_SCOPE_PROCESS);
+	if(argv_2 == 1)
+	{
+	    ret = pthread_attr_setschedpolicy( &attr, SCHED_OTHER);
+	}
+	else if(argv_2 == 2)
+	{
+	    ret = pthread_attr_setschedpolicy( &attr, SCHED_BATCH);
+	}
+	else if(argv_2 == 3)
+	{
+	    ret = pthread_attr_setschedpolicy( &attr, SCHED_IDLE);
+	}
+    }
+    else
+    {
+	fprintf(stderr, "ERROR\n");
+    }
     // thread_count adet thread yaratir
     for (i = 0; i < thread_count; i++) {
-    err = pthread_create(&threads[i], NULL,  runner, NULL);
-    if(err != 0) {
-    fprintf(stderr,"pthread create failed\n");
-    exit(1);
+	err = pthread_create(&threads[i], NULL,  runner, NULL);    	    
+    	if(err != 0) {
+    	fprintf(stderr,"pthread create failed\n");
+    	exit(1);
     }
     }
 
@@ -201,24 +242,62 @@ int main(int argc, const char *argv[])
     exit(1);
     }
     }
-    for ( int i = 0; i < SIZE; i++ ) {
+
+    /* Print
+    for (i = 0; i < SIZE; i++ ) {
         printf( "*(p + %d) : %d\n", i, *(p + i));
     }
-    for ( int i = 0; i < (SIZE / 5); i++ ) {
+    for (i = 0; i < (SIZE / 5); i++ ) {
         printf( "*(firstPart + %d) : %d\n", i, *(firstPart + i));
     }
-    for ( int i = 0; i < (SIZE / 5); i++ ) {
+    for (i = 0; i < (SIZE / 5); i++ ) {
         printf( "*(secondPart + %d) : %d\n", i, *(secondPart + i));
     }
-    for ( int i = 0; i < SIZE / 5; i++ ) {
+    for (i = 0; i < SIZE / 5; i++ ) {
         printf( "*(thirdPart + %d) : %d\n", i, *(thirdPart + i));
     }
-    for ( int i = 0; i < (SIZE / 5); i++ ) {
+    for (i = 0; i < (SIZE / 5); i++ ) {
         printf( "*(fourthPart + %d) : %d\n", i, *(fourthPart + i));
     }
-    for ( int i = 0; i < (SIZE / 5); i++ ) {
+    for (i = 0; i < (SIZE / 5); i++ ) {
         printf( "*(fifthPart + %d) : %d\n", i, *(fifthPart + i));
+    }*/
+
+
+    //Concatenation
+    int* concat = malloc(SIZE * sizeof(int));
+    memcpy(concat, firstPart, (SIZE/5) * sizeof(int));
+    memcpy(concat + (SIZE/5), secondPart, (SIZE/5) * sizeof(int));
+    memcpy(concat + 2 * (SIZE/5), thirdPart, (SIZE/5) * sizeof(int));
+    memcpy(concat + 3 * (SIZE/5), fourthPart, (SIZE/5) * sizeof(int));
+    memcpy(concat + 4 * (SIZE/5), fifthPart, (SIZE/5) * sizeof(int));
+    
+    /* PRINT 
+    for(i = 0; i < SIZE; i++){
+    	printf("*(concat + %d ) : %d\n", i, *(concat+i));
     }
+    */
+    for(i = 0; i < SIZE - 1; i++)
+    {
+	for(j = i + 1; j < SIZE; j++)
+	{
+	    if(concat[i] > concat[j])
+	    {
+		t = concat[i];
+		concat[i] = concat[j];
+		concat[j] = t;
+	    }
+	}
+    }
+    /* PRINT
+    for(i = 0; i < SIZE; i++){
+    	printf("*(concat + %d ) : %d\n", i, *(concat+i));
+
+    }
+    */
+    // Ölçüm bitti
+    gettimeofday(&stop, NULL);
+    time_it(&stop, &start);
 
     //Garbage collector
     free(threads);
